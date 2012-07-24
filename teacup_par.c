@@ -48,6 +48,8 @@ int main(int argc, char **argv)
 	CompressedMatrix *cBi,*cA;
 	CompressedMatrix *cCi;
 
+	char printDebug;
+
 	//************ Check Input **************/
 	if(argc < 3){
 		printf("Usage: %s MaxtrixSize NumberOfThreads\n" , argv[0] );
@@ -73,38 +75,47 @@ int main(int argc, char **argv)
 
 	//************ Prepare Matrix **************/
 	A = (double *) malloc( N*N * sizeof(double) );
-
-//	Ci = (double *) malloc( N*nColumns * sizeof(double) );
 	if((A == NULL) ){
 	  printf("Running out of memory!\n"); exit(EXIT_FAILURE);
 	}
 
-//	printf("Node [%d] Bi ...",mpi_id);
-//	printMatrix(Bi, N, nColumns);
-
-
+//	if(mpi_id != 0){
+//		MPI_Finalize();
+//		exit(0);
+//	}
 
 	if(mpi_id == 0)
 	{
-		printf("[%d] Generating A ...",mpi_id);
+		printDebug = 0;
+
+		if(printDebug) printf("[%d] Generating A ...",mpi_id);
 		//Fill matrixes. Generate Identity like matrix for A and B , So C should result in an matrix with a single major diagonal
 		for(i=0; i < N; i++ ){
 		 for(j=0; j < N; j++){
 			A[i+N*j] = (i==j)?i:0.0;
 
-			//Sparse Matrix with 10% population
-	//		A[i+N*j] = rand()%10;
-	//		if(A[i+N*j] == 0)
-	//			A[i+N*j] = rand()%10;
-	//		else
-	//			A[i+N*j] = 0;
+//			//Sparse Matrix with 10% population
+//			A[i+N*j] = rand()%10;
+//			if(A[i+N*j] == 0)
+//				A[i+N*j] = rand()%10;
+//			else
+//				A[i+N*j] = 0;
 		 }
 		}
 
-		printf("[%d] Broadcasting A ...",mpi_id);
+//		printMatrix(A, N, nColumns);
+//		cA = compressMatrix(A, N, nColumns);
+//		printCompressedMatrix(cA);
+//		uncompressMatrix(cA, &Bi, &i, &j);
+//		printMatrix(Bi, i, j);
+//
+//		MPI_Finalize();
+//		exit(0);
+
+		if(printDebug) printf("[%d] Broadcasting A ...",mpi_id);
 		MPI_Bcast( A, N*N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-		printf("[%d] Generating B ...",mpi_id);
+		if(printDebug) printf("[%d] Generating B ...",mpi_id);
 		double* B; CompressedMatrix* cB;
 		B = (double *) malloc( N*N * sizeof(double) );
 		for(i=0; i < N; i++ ){
@@ -113,7 +124,7 @@ int main(int argc, char **argv)
 		 }
 		}
 
-		printf("[%d] Compressing and distributing Bi ...",mpi_id);
+		if(printDebug) printf("[%d] Compressing and distributing Bi ...",mpi_id);
 		cB = compressMatrix(B, N, N);
 		for(i=1; i < mpi_size; i++){
 			mpiSendCompressedMatrix(cB, i*nColumns, (i+1)*nColumns, i);
@@ -125,57 +136,63 @@ int main(int argc, char **argv)
 		uncompressMatrix(cB, &Bi, &BiRows, &BiColumns);
 		Ci = MatrixMultiply(A, N, N, Bi, nColumns);
 
-		printf("[%d] Ci = A x Bi ...", mpi_id);
-		printMatrix(Ci, N, nColumns);
+		if(printDebug) printf("[%d] Ci = A x Bi ...", mpi_id);
+		if(printDebug) printMatrix(Ci, N, nColumns);
 
 		cCi = compressMatrix(Ci, N, nColumns);
+		if(printDebug) printf("cCi ...\n");
+		if(printDebug) printCompressedMatrix(cCi);
 
 		MPI_Barrier(MPI_COMM_WORLD);
 
-		printf("[%d] Receiving Ci fragments ...\n", mpi_id);
+		if(printDebug) printf("[%d] Receiving Ci fragments ...\n", mpi_id);
 		CompressedMatrix** Cii;
 		Cii = (CompressedMatrix**) malloc(sizeof(CompressedMatrix*) * mpi_size);
 			if(Cii == NULL){ perror("malloc"); exit(EXIT_FAILURE); }
 		Cii[0] = cCi;
 		for(i=1; i < mpi_size; i++){
-			printf("C%d ", i);
 			Cii[i] = mpiRecvCompressedMatrix(N,nColumns, i);
 		}
 
-		printf("[%d] Joining Cii ...\n", mpi_id);
-		CompressedMatrix *C;
-		C = joinCompressedMatrices(Cii, mpi_size);
+		if(printDebug) printf("[%d] Joining Cii ...\n", mpi_id);
+		CompressedMatrix *cC;
+		cC = joinCompressedMatrices(Cii, mpi_size);
+		if(printDebug) printCompressedMatrix(cC);
 
-
-		printf("[%d] Cii ...\n", mpi_id);
-		printCompressedMatrix(C);
+		printf("[%d] C ...\n", mpi_id);
+		uncompressMatrix(cC, &C, &i,&j);
+		printMatrix(C, i,j);
 
 	} else {
-		printf("[%d] Waiting for A ...",mpi_id);
+		printDebug = 0;
+
+		if(printDebug) printf("[%d] Waiting for A ...",mpi_id);
 		MPI_Bcast( A, N*N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-		printMatrix(A, N, N);
+		if(printDebug) printf("[%d] Received A ...\n", mpi_id);
+		if(printDebug) printMatrix(A, N, N);
 
-		printf("[%d] Waiting for Bi ...",mpi_id);
+		if(printDebug) printf("[%d] Waiting for Bi ...",mpi_id);
 		cBi = mpiRecvCompressedMatrix(N, nColumns, 0);
 		uncompressMatrix(cBi, &Bi, &BiRows, &BiColumns);
 
-		printf("[%d] Received Bi ...",mpi_id);
-		printMatrix(Bi,BiRows, BiColumns);
+		if(printDebug) printf("[%d] Received Bi ...",mpi_id);
+		if(printDebug) printMatrix(Bi,BiRows, BiColumns);
 
 		assert( (BiRows == N) && "Number or Rows in Bi is not right!");
 		assert( (BiColumns == nColumns) && "Number or Columns in Bi is not right!");
 
 		Ci = MatrixMultiply(A, N, N, Bi, BiColumns);
 
-		printf("[%d] Ci = A x Bi ...", mpi_id);
-		printMatrix(Ci, N, nColumns);
+		if(printDebug) printf("[%d] Ci = A x Bi ...", mpi_id);
+		if(printDebug) printMatrix(Ci, N, nColumns);
 
 		cCi = compressMatrix(Ci, N, nColumns);
+		if(printDebug) printCompressedMatrix(cCi);
 
 		MPI_Barrier(MPI_COMM_WORLD);
 
-		printf("[%d] Returning Ci ...\n", mpi_id);
+		if(printDebug) printf("[%d] Returning Ci ...\n", mpi_id);
 		mpiSendCompressedMatrix(cCi, 0, nColumns, 0);
 
 	}
@@ -228,6 +245,8 @@ CompressedMatrix* joinCompressedMatrices(CompressedMatrix **Cii, int nMatrices)
 		assert( (nRows == Cii[i]->rows) && "The number of rows in each matrix must be the same!" );
 	}
 
+	printf("Joining [%d] compressed Matrices with [%d] total Columns ...", nMatrices, nTotalColumns);
+
 	C = malloc(sizeof(CompressedMatrix));
 		if(C == NULL){ perror("malloc"); exit(EXIT_FAILURE); }
 
@@ -242,9 +261,10 @@ CompressedMatrix* joinCompressedMatrices(CompressedMatrix **Cii, int nMatrices)
 	C->Zero = malloc(sizeof(int*)*C->columns);
 		if(C->Zero == NULL){ perror("malloc"); exit(EXIT_FAILURE); }
 
+	printf("Copy references ...\n");
 	k = 0;
 	for(i = 0; i < nMatrices; i++){
-		for(j = 0; i < Cii[i]->columns; i++){
+		for(j = 0; j < Cii[i]->columns; j++){
 			C->nNoneZero[k+j] = Cii[i]->nNoneZero[j];
 			C->NoneZero[k+j] = Cii[i]->NoneZero[j];
 			C->nZero[k+j] = Cii[i]->nZero[j];
@@ -255,6 +275,7 @@ CompressedMatrix* joinCompressedMatrices(CompressedMatrix **Cii, int nMatrices)
 		assert( (k <= nTotalColumns) && "Too many columns!");
 	}
 
+	printf("Finished joining matrices!\n");
 	return C;
 }
 
@@ -316,16 +337,17 @@ CompressedMatrix* compressMatrix(double* M, int nRows,int nColumns)
 	// i ... line, j ... column
 	for(j=0; j<cM->columns; j++){
 		for(i=0; i<cM->rows; i++){
-			if(M[j + i*cM->rows] == 0.0){
+			if(M[j + i*cM->columns] == 0.0){
 				start = i;
 				end = i+1;
-				while( (end < cM->rows) && (M[j + end*cM->rows] == 0.0) ) end++;
+				while( (end < cM->rows) && (M[j + end*cM->columns] == 0.0) ) end++;
 				Z[j][cM->nZero[j]*2 + 0] = start;
 				Z[j][cM->nZero[j]*2 + 1] = end;
 				cM->nZero[j]++;
 				i=end-1;
+				//printf("zB[%d] [%d-%d]\n",j, start, end);
 			} else {
-				NZ[j][cM->nNoneZero[j]] = M[j + i*cM->rows];
+				NZ[j][cM->nNoneZero[j]] = M[j + i*cM->columns];
 				cM->nNoneZero[j]++;
 			}
 		}
