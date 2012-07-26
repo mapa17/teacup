@@ -13,7 +13,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdio.h>
-#include <cblas.h>
+//#include <cblas.h>
 
 #include "teacup_tools.h"
 
@@ -21,7 +21,7 @@ int main(int argc, char **argv)
 {
 	double *A, *B, *C;
 	int N;
-	int i, j;
+	int i, j, k;
 	double elapsed;
 
 	// Input data
@@ -46,7 +46,15 @@ int main(int argc, char **argv)
 	int rows = N, columns = N;
 	int stride = N;
 	tick();
-	cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, rows, columns, columns, 1.0, A, stride, B, stride, 1.0, C, stride);
+	//cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, rows, columns, columns, 1.0, A, stride, B, stride, 1.0, C, stride);
+	for(i=0; i < N; i++){
+		for(j=0; j<N; j++){
+			C[j + i*N] = 0.0;
+			for(k=0; k<N; k++){
+				C[j + i*N] += A[k + i*N] * B[j + k*N];
+			}
+		}
+	}
 	elapsed = tack();
 
 	printf("%f sec\n", elapsed);
